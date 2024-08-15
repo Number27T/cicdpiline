@@ -8,105 +8,77 @@ on:
     branches:
       - main
 
-
-env:
-  NODE_ENV: production
-
 jobs:
   build:
-    name: Build
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '14'
-      
-      - name: Install dependencies
-        run: npm install
-      
-      - name: Build the application
-        run: npm run build
-      
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: build-artifact
-          path: build/
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '7.x'  # Replace with your target .NET version
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build --configuration Release --no-restore
 
   test:
-    name: Test
     runs-on: ubuntu-latest
     needs: build
-    
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '14'
-      
-      - name: Install dependencies
-        run: npm install
-      
-      - name: Run tests
-        run: npm test
-      
-      - name: Run code quality checks
-        run: npm run lint
-      
-      - name: Run code coverage
-        run: npm run coverage
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '7.x'  # Replace with your target .NET version
+
+    - name: Run tests
+      run: dotnet test --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+    - name: Code Quality Analysis
+      run: dotnet tool install --global dotnet-sonarscanner
+      env:
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+        NUGET_XMLDOC_MODE: skip
+    - name: Analyze code with SonarQube
+      run: dotnet sonarscanner begin /k:"your_project_key" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+    - name: End analysis
+      run: dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
 
   deploy:
-    name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: test
-    
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '14'
-      
-      - name: Install dependencies
-        run: npm install
-      
-      - name: Deploy to staging environment
-        run: npm run deploy:staging
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Deploy to Staging Environment
+      run: |
+        # Replace this with your deployment script
+        echo "Deploying application to staging environment..."
+
+    - name: Send notification on failure
+      if: failure()
+      uses: roccivic/action-send-slack-message@v1
+      with:
+        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        msg: "Deployment to staging environment failed! Please check the logs."
 
   notify:
-    name: Notification
     runs-on: ubuntu-latest
-    needs: [build, test, deploy]
     if: failure()
-    
     steps:
-      - name: Notify team of failure
-        uses: slackapi/slack-github-action@v1.23.0
-        with:
-          payload: |
-            {
-              "text": "CI/CD Pipeline Failed :x:",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*CI/CD Pipeline Failed :x:* \nCheck the workflow logs for more details."
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
+    - name: Notify team on failure
+      uses: roccivic/action-send-slack-message@v1
+      with:
+        webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        msg: "Build or Deployment failed! Please check the logs."
